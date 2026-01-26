@@ -310,7 +310,7 @@ If `agent-browser open <url>` fails with `browserType.launch: Executable doesn't
 
 ```bash
 # macOS - use installed Google Chrome
-agent-browser --executable-path "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" open example.com
+agent-browser --executable-path "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --sesion dev --disable-gpu" open example.com
 
 # Linux
 agent-browser --executable-path /usr/bin/google-chrome open example.com
@@ -319,7 +319,7 @@ agent-browser --executable-path /usr/bin/google-chrome open example.com
 agent-browser --executable-path "C:\Program Files\Google\Chrome\Application\chrome.exe" open example.com
 
 # Or set via environment variable
-AGENT_BROWSER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" agent-browser open example.com
+AGENT_BROWSER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --sesion dev --disable-gpu" agent-browser open example.com
 ```
 
 Never run `npx playwright install`. If the above fails, report the issue to the user.
