@@ -19,6 +19,10 @@ interface RateWindow {
   label: string;
   usedPercent: number;
   resetDescription?: string;
+
+  // For Copilot premium interactions
+  remaining?: number;
+  entitlement?: number;
 }
 
 interface UsageSnapshot {
@@ -82,9 +86,9 @@ async function fetchCopilotUsage(): Promise<UsageSnapshot> {
       windows.push({
         label: "Premium",
         usedPercent,
-        resetDescription: resetDesc
-          ? `${resetDesc} (${remaining}/${entitlement})`
-          : `${remaining}/${entitlement}`,
+        resetDescription: resetDesc,
+        remaining,
+        entitlement,
       });
     }
 
@@ -265,24 +269,57 @@ function renderPlainBar(
   return { used: "━".repeat(filled), remaining: "┉".repeat(empty) };
 }
 
-function renderFooterText(
+function renderCodexFooterText(
   ctx: any,
   label: string,
   usedPercent: number,
   resetDescription?: string,
+  { pipeAfterLabel = false }: { pipeAfterLabel?: boolean } = {},
 ): string {
-  // Bar shows USED, percentage shows REMAINING.
-  const remaining = Math.max(0, 100 - usedPercent);
-  const bar = renderPlainBar(usedPercent);
-  const reset = resetDescription ? ` - ${resetDescription}` : "";
-  const remainingText = `${remaining.toFixed(0).padStart(3)}%`;
+  // Bar + percentage show USED.
+  const used = Math.max(0, Math.min(100, usedPercent));
+  const bar = renderPlainBar(used);
+  const usedText = `${used.toFixed(0)}% used`;
 
   const theme = ctx.ui?.theme;
   let color = "dim";
-  if (remaining <= 40) color = "warning";
-  if (remaining <= 15) color = "error";
+  if (used >= 60) color = "warning";
+  if (used >= 85) color = "error";
 
-  return `${theme.fg("dim", `${label} `)} ${theme.fg(color, bar.used)}${theme.fg("dim", bar.remaining)} ${theme.fg(color, remainingText)} ${theme.fg("dim", reset)}`;
+  const resetCompact = resetDescription
+    ? resetDescription.replace(/\s+/g, "")
+    : undefined;
+
+  const left = pipeAfterLabel ? `${label} |` : label;
+  const leftWithReset = resetCompact ? `${left} ${resetCompact}` : left;
+
+  // Two spaces between reset and bar to match the desired footer output.
+  return `${theme.fg("dim", leftWithReset)}  ${theme.fg(color, bar.used)}${theme.fg("dim", bar.remaining)}  ${theme.fg(color, usedText)}`;
+}
+
+function renderCopilotFooterText(
+  ctx: any,
+  usedPercent: number,
+  remaining: number,
+  entitlement: number,
+  resetDescription?: string,
+): string {
+  const used = Math.max(0, Math.min(100, usedPercent));
+  const bar = renderPlainBar(used);
+  const usedText = `${used.toFixed(0).padStart(3)}% used`;
+
+  const theme = ctx.ui?.theme;
+  let color = "dim";
+  if (used >= 60) color = "warning";
+  if (used >= 85) color = "error";
+
+  const quotaText = `(${remaining}/${entitlement})`;
+  const resetCompact = resetDescription
+    ? resetDescription.replace(/\s+/g, "")
+    : undefined;
+  const resetText = resetCompact ? ` | reset ${resetCompact}` : "";
+
+  return `${theme.fg("dim", "Github Copilot |")} ${theme.fg(color, bar.used)}${theme.fg("dim", bar.remaining)} ${theme.fg(color, usedText)} ${theme.fg("dim", `${quotaText}${resetText}`)}`;
 }
 
 async function updateFooterStatus(
@@ -327,10 +364,11 @@ async function updateFooterStatus(
 
       ctx.ui.setStatus(
         FOOTER_STATUS_ID,
-        renderFooterText(
+        renderCopilotFooterText(
           ctx,
-          "Premium",
           premium.usedPercent,
+          premium.remaining ?? 0,
+          premium.entitlement ?? 0,
           premium.resetDescription,
         ),
       );
@@ -364,14 +402,14 @@ async function updateFooterStatus(
         return;
       }
 
-      const primaryLabel = `Codex ${primary.label}`.trim();
       ctx.ui.setStatus(
         FOOTER_STATUS_ID,
-        renderFooterText(
+        renderCodexFooterText(
           ctx,
-          primaryLabel,
+          "Codex",
           primary.usedPercent,
           primary.resetDescription,
+          { pipeAfterLabel: true },
         ),
       );
 
@@ -380,7 +418,7 @@ async function updateFooterStatus(
         const secondaryLabel = `║ ${secondary.label}`.trim();
         ctx.ui.setStatus(
           FOOTER_STATUS_SECONDARY_ID,
-          renderFooterText(
+          renderCodexFooterText(
             ctx,
             secondaryLabel,
             secondary.usedPercent,
