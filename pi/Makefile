@@ -1,7 +1,12 @@
 EXTENSIONS_SRC := extensions
 EXTENSIONS_DEST := $(HOME)/.pi/agent/extensions
 
-.PHONY: extensions
+THEMES_SRC := themes
+THEMES_DEST := $(HOME)/.pi/agent/themes
+
+.PHONY: extensions themes all
+
+all: extensions themes
 
 extensions:
 	@mkdir -p $(EXTENSIONS_DEST)
@@ -9,4 +14,12 @@ extensions:
 		name=$$(basename "$$item"); \
 		ln -sf "$$(pwd)/$$item" "$(EXTENSIONS_DEST)/$$name"; \
 		echo "Linked $$name -> $(EXTENSIONS_DEST)/$$name"; \
+	done
+
+themes:
+	@mkdir -p $(THEMES_DEST)
+	@for item in $(THEMES_SRC)/*; do \
+		name=$$(basename "$$item"); \
+		ln -sf "$$(pwd)/$$item" "$(THEMES_DEST)/$$name"; \
+		echo "Linked $$name -> $(THEMES_DEST)/$$name"; \
 	done
