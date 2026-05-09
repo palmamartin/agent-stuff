@@ -1,28 +1,26 @@
-.PHONY: pi codex amp claude all
+.PHONY: all pi
 
-CURRENT_DIR := $(shell pwd)
+MAKEFILE_DIR := $(patsubst %/,%,$(abspath $(dir $(lastword $(MAKEFILE_LIST)))))
+PI_SKILLS_DIR := $(abspath $(MAKEFILE_DIR)/../pi/skills)
+
+all:
+	@mkdir -p ~/.agents/skills
+	@for dir in "$(MAKEFILE_DIR)"/*/; do \
+		[ -d "$$dir" ] || continue; \
+		name=$$(basename "$$dir"); \
+		dest=~/.agents/skills/"$$name"; \
+		rm -f "$$dest"; \
+		ln -s "$${dir%/}" "$$dest"; \
+		echo "Linked $${dir%/} to $$dest"; \
+	done
 
 pi:
 	@mkdir -p ~/.pi/agent/skills
-	@ln -sf "$(CURRENT_DIR)" ~/.pi/agent/skills/agent-skills
-	@echo "Linked to ~/.pi/agent/skills/agent-skills"
-
-codex:
-	@mkdir -p ~/.codex/skills
-	@ln -sf "$(CURRENT_DIR)" ~/.codex/skills/agent-skills
-	@echo "Linked to ~/.codex/skills/agent-skills"
-
-amp:
-	@mkdir -p ~/.config/amp/tools
-	@ln -sf "$(CURRENT_DIR)" ~/.config/amp/tools/agent-skills
-	@echo "Linked to ~/.config/amp/tools/agent-skills"
-
-claude:
-	@mkdir -p ~/.claude/skills
-	@for dir in $(CURRENT_DIR)/*/; do \
+	@for dir in "$(PI_SKILLS_DIR)"/*/; do \
+		[ -d "$$dir" ] || continue; \
 		name=$$(basename "$$dir"); \
-		ln -sf "$$dir" ~/.claude/skills/"$$name"; \
-		echo "Linked $$name to ~/.claude/skills/$$name"; \
+		dest=~/.pi/agent/skills/"$$name"; \
+		rm -f "$$dest"; \
+		ln -s "$${dir%/}" "$$dest"; \
+		echo "Linked $${dir%/} to $$dest"; \
 	done
-
-all: pi codex amp claude

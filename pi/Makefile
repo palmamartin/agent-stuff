@@ -6,7 +6,7 @@ THEMES_DEST := $(HOME)/.pi/agent/themes
 
 .PHONY: extensions themes all
 
-all: extensions themes
+all: extensions themes skills
 
 extensions:
 	@mkdir -p $(EXTENSIONS_DEST)
@@ -22,4 +22,15 @@ themes:
 		name=$$(basename "$$item"); \
 		ln -sf "$$(pwd)/$$item" "$(THEMES_DEST)/$$name"; \
 		echo "Linked $$name -> $(THEMES_DEST)/$$name"; \
+	done
+
+skills:
+	@mkdir -p ~/.pi/agent/skills
+	@for dir in "$(PI_SKILLS_DIR)"/*/; do \
+		[ -d "$$dir" ] || continue; \
+		name=$$(basename "$$dir"); \
+		dest=~/.pi/agent/skills/"$$name"; \
+		rm -f "$$dest"; \
+		ln -s "$${dir%/}" "$$dest"; \
+		echo "Linked $${dir%/} to $$dest"; \
 	done
