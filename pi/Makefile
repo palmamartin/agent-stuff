@@ -4,7 +4,10 @@ EXTENSIONS_DEST := $(HOME)/.pi/agent/extensions
 THEMES_SRC := themes
 THEMES_DEST := $(HOME)/.pi/agent/themes
 
-.PHONY: extensions themes all
+SKILLS_SRC := skills
+SKILLS_DEST := $(HOME)/.pi/agent/skills
+
+.PHONY: extensions themes skills all
 
 all: extensions themes skills
 
@@ -25,12 +28,9 @@ themes:
 	done
 
 skills:
-	@mkdir -p ~/.pi/agent/skills
-	@for dir in "$(PI_SKILLS_DIR)"/*/; do \
-		[ -d "$$dir" ] || continue; \
-		name=$$(basename "$$dir"); \
-		dest=~/.pi/agent/skills/"$$name"; \
-		rm -f "$$dest"; \
-		ln -s "$${dir%/}" "$$dest"; \
-		echo "Linked $${dir%/} to $$dest"; \
+	@mkdir -p $(SKILLS_DEST)
+	@for item in $(SKILLS_SRC)/*; do \
+		name=$$(basename "$$item"); \
+		ln -sf "$$(pwd)/$$item" "$(SKILLS_DEST)/$$name"; \
+		echo "Linked $$name -> $(SKILLS_DEST)/$$name"; \
 	done
