@@ -45,15 +45,12 @@ async function getDays(args: string, ctx: ExtensionCommandContext) {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerCommand("archive", {
-    description: "Mark the current session as archived",
+  pi.registerCommand("archive-quit", {
+    description: "Archive the current session and quit pi",
     handler: async (_args, ctx) => {
-      if (!archiveCurrentSession(pi, ctx)) {
-        ctx.ui.notify("Session is already archived", "info");
-        return;
-      }
-
-      ctx.ui.notify("Session archived", "info");
+      const archived = archiveCurrentSession(pi, ctx);
+      ctx.ui.notify(archived ? "Session archived. Quitting pi." : "Session already archived. Quitting pi.", "info");
+      ctx.shutdown();
     },
   });
 
