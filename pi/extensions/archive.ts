@@ -1,7 +1,8 @@
 import { SessionManager, type ExtensionAPI, type ExtensionCommandContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 
 const CUSTOM_TYPE = "der-computer-metadata";
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const ARCHIVE_AGE_HOURS = 72;
 
 interface DerComputerMetadata {
   archived?: boolean;
@@ -26,22 +27,6 @@ function archiveCurrentSession(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
   if (isArchived(ctx.sessionManager.getBranch())) return false;
   pi.appendEntry(CUSTOM_TYPE, { archived: true });
   return true;
-}
-
-function parseDays(value: string) {
-  const days = Number(value.trim());
-  return Number.isInteger(days) && days > 0 ? days : undefined;
-}
-
-async function getDays(args: string, ctx: ExtensionCommandContext) {
-  const daysFromArgs = parseDays(args);
-  if (daysFromArgs !== undefined) return daysFromArgs;
-
-  const input = await ctx.ui.input("Archive old sessions", "Days");
-  const daysFromInput = input ? parseDays(input) : undefined;
-  if (daysFromInput !== undefined) return daysFromInput;
-
-  ctx.ui.notify("Usage: /archive-all-older-than <days>", "warning");
 }
 
 export default function (pi: ExtensionAPI) {
@@ -85,24 +70,21 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("archive-all-older-than", {
-    description: "Archive all sessions across all projects older than <days>",
-    handler: async (args, ctx) => {
-      const days = await getDays(args, ctx);
-      if (days === undefined) return;
-
-      const cutoff = Date.now() - days * DAY_MS;
+  pi.registerCommand("archive-older-than-72h", {
+    description: "Archive all sessions across all projects older than 72 hours",
+    handler: async (_args, ctx) => {
+      const cutoff = Date.now() - ARCHIVE_AGE_HOURS * HOUR_MS;
       const sessions = await SessionManager.listAll();
       const oldSessions = sessions.filter((session) => session.modified.getTime() < cutoff);
 
       if (oldSessions.length === 0) {
-        ctx.ui.notify(`No sessions older than ${days} day${days === 1 ? "" : "s"}`, "info");
+        ctx.ui.notify("No sessions older than 72 hours", "info");
         return;
       }
 
       const confirmed = await ctx.ui.confirm(
         "Archive old sessions?",
-        `Archive ${oldSessions.length} session${oldSessions.length === 1 ? "" : "s"} older than ${days} day${days === 1 ? "" : "s"}?`,
+        `Archive ${oldSessions.length} session${oldSessions.length === 1 ? "" : "s"} older than 72 hours?`,
       );
       if (!confirmed) return;
 
