@@ -4,7 +4,6 @@
  * Shows provider usage stats in the footer status area.
  *
  * Supported:
- * - GitHub Copilot: Premium interactions quota
  * - OpenAI Codex: primary + secondary rate limit windows
  *
  * Modified https://github.com/hjanuschka/shitty-extensions/blob/f05612d595b16f6b93f114041eca6d56f6ce3724/extensions/usage-bar.ts to my needs.
@@ -19,83 +18,11 @@ interface RateWindow {
   label: string;
   usedPercent: number;
   resetDescription?: string;
-
-  // For Copilot premium interactions
-  remaining?: number;
-  entitlement?: number;
 }
 
 interface UsageSnapshot {
   windows: RateWindow[];
   error?: string;
-}
-
-// ============================================================================
-// Copilot Usage
-// ============================================================================
-
-function loadCopilotRefreshToken(): string | undefined {
-  // The copilot_internal/user endpoint needs the GitHub OAuth token (ghu_*).
-  const authPath = path.join(os.homedir(), ".pi", "agent", "auth.json");
-  try {
-    if (fs.existsSync(authPath)) {
-      const data = JSON.parse(fs.readFileSync(authPath, "utf-8"));
-      return data["github-copilot"]?.refresh;
-    }
-  } catch {}
-
-  return undefined;
-}
-
-async function fetchCopilotUsage(): Promise<UsageSnapshot> {
-  const token = loadCopilotRefreshToken();
-  if (!token) return { windows: [], error: "No token" };
-
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), 5000);
-
-  try {
-    // GitHub OAuth token (ghu_*) requires "token" prefix, not Bearer.
-    const res = await fetch("https://api.github.com/copilot_internal/user", {
-      headers: {
-        "Editor-Version": "vscode/1.96.2",
-        "User-Agent": "GitHubCopilotChat/0.26.7",
-        "X-Github-Api-Version": "2025-04-01",
-        Accept: "application/json",
-        Authorization: `token ${token}`,
-      },
-      signal: controller.signal,
-    });
-
-    if (!res.ok) return { windows: [], error: `HTTP ${res.status}` };
-
-    const data = (await res.json()) as any;
-    const windows: RateWindow[] = [];
-
-    const resetDate = data.quota_reset_date_utc
-      ? new Date(data.quota_reset_date_utc)
-      : undefined;
-    const resetDesc = resetDate ? formatReset(resetDate) : undefined;
-
-    // Premium interactions - has a cap.
-    if (data.quota_snapshots?.premium_interactions) {
-      const pi = data.quota_snapshots.premium_interactions;
-      const remaining = pi.remaining ?? 0;
-      const entitlement = pi.entitlement ?? 0;
-      const usedPercent = Math.max(0, 100 - (pi.percent_remaining || 0));
-      windows.push({
-        label: "Premium",
-        usedPercent,
-        resetDescription: resetDesc,
-        remaining,
-        entitlement,
-      });
-    }
-
-    return { windows };
-  } catch (e) {
-    return { windows: [], error: String(e) };
-  }
 }
 
 // ============================================================================
@@ -239,17 +166,8 @@ const FOOTER_STATUS_SECONDARY_ID = "usage-secondary";
 const FOOTER_BAR_W = 12;
 const FOOTER_REFRESH_MS = 30_000;
 
-let lastCopilotFooterUpdate = 0;
-let copilotFooterInFlight = false;
-
 let lastCodexFooterUpdate = 0;
 let codexFooterInFlight = false;
-
-function isCopilotProvider(provider: unknown): boolean {
-  return (
-    typeof provider === "string" && provider.toLowerCase().includes("copilot")
-  );
-}
 
 function isCodexProvider(provider: unknown): boolean {
   if (typeof provider !== "string") return false;
@@ -297,31 +215,6 @@ function renderCodexFooterText(
   return `${theme.fg("dim", leftWithReset)}  ${theme.fg(color, bar.used)}${theme.fg("dim", bar.remaining)}  ${theme.fg(color, usedText)}`;
 }
 
-function renderCopilotFooterText(
-  ctx: any,
-  usedPercent: number,
-  remaining: number,
-  entitlement: number,
-  resetDescription?: string,
-): string {
-  const used = Math.max(0, Math.min(100, usedPercent));
-  const bar = renderPlainBar(used);
-  const usedText = `${used.toFixed(0).padStart(3)}% used`;
-
-  const theme = ctx.ui?.theme;
-  let color = "dim";
-  if (used >= 60) color = "warning";
-  if (used >= 85) color = "error";
-
-  const quotaText = `(${remaining}/${entitlement})`;
-  const resetCompact = resetDescription
-    ? resetDescription.replace(/\s+/g, "")
-    : undefined;
-  const resetText = resetCompact ? ` | reset ${resetCompact}` : "";
-
-  return `${theme.fg("dim", "Github Copilot |")} ${theme.fg(color, bar.used)}${theme.fg("dim", bar.remaining)} ${theme.fg(color, usedText)} ${theme.fg("dim", `${quotaText}${resetText}`)}`;
-}
-
 async function updateFooterStatus(
   ctx: any,
   { force = false }: { force?: boolean } = {},
@@ -330,7 +223,7 @@ async function updateFooterStatus(
 
   const provider = ctx.model?.provider;
 
-  if (!isCopilotProvider(provider) && !isCodexProvider(provider)) {
+  if (!isCodexProvider(provider)) {
     ctx.ui.setStatus(FOOTER_STATUS_ID, undefined);
     ctx.ui.setStatus(FOOTER_STATUS_SECONDARY_ID, undefined);
     return;
@@ -338,49 +231,6 @@ async function updateFooterStatus(
 
   const timeout = <T>(p: Promise<T>, ms: number, fallback: T) =>
     Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))]);
-
-  if (isCopilotProvider(provider)) {
-    const now = Date.now();
-    if (!force && now - lastCopilotFooterUpdate < FOOTER_REFRESH_MS) return;
-    if (copilotFooterInFlight) return;
-    copilotFooterInFlight = true;
-
-    try {
-      const usage = await timeout(fetchCopilotUsage(), 5000, {
-        windows: [],
-        error: "Timeout",
-      } as UsageSnapshot);
-
-      const premium = usage.windows.find(
-        (w) => w.label.toLowerCase() === "premium",
-      );
-
-      if (!premium) {
-        ctx.ui.setStatus(FOOTER_STATUS_ID, undefined);
-        ctx.ui.setStatus(FOOTER_STATUS_SECONDARY_ID, undefined);
-        lastCopilotFooterUpdate = now;
-        return;
-      }
-
-      ctx.ui.setStatus(
-        FOOTER_STATUS_ID,
-        renderCopilotFooterText(
-          ctx,
-          premium.usedPercent,
-          premium.remaining ?? 0,
-          premium.entitlement ?? 0,
-          premium.resetDescription,
-        ),
-      );
-      ctx.ui.setStatus(FOOTER_STATUS_SECONDARY_ID, undefined);
-
-      lastCopilotFooterUpdate = now;
-    } finally {
-      copilotFooterInFlight = false;
-    }
-
-    return;
-  }
 
   if (isCodexProvider(provider)) {
     const now = Date.now();
