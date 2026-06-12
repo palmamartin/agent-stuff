@@ -22,6 +22,12 @@ function isArchived(entries: SessionEntry[]) {
   return getMetadata(entries)?.archived === true;
 }
 
+function archiveCurrentSession(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
+  if (isArchived(ctx.sessionManager.getBranch())) return false;
+  pi.appendEntry(CUSTOM_TYPE, { archived: true });
+  return true;
+}
+
 function parseDays(value: string) {
   const days = Number(value.trim());
   return Number.isInteger(days) && days > 0 ? days : undefined;
@@ -42,13 +48,30 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("archive", {
     description: "Mark the current session as archived",
     handler: async (_args, ctx) => {
-      if (isArchived(ctx.sessionManager.getBranch())) {
+      if (!archiveCurrentSession(pi, ctx)) {
         ctx.ui.notify("Session is already archived", "info");
         return;
       }
 
-      pi.appendEntry(CUSTOM_TYPE, { archived: true });
       ctx.ui.notify("Session archived", "info");
+    },
+  });
+
+  pi.registerCommand("archive-new", {
+    description: "Archive the current session and start a new session",
+    handler: async (_args, ctx) => {
+      archiveCurrentSession(pi, ctx);
+
+      const result = await ctx.newSession({
+        parentSession: ctx.sessionManager.getSessionFile(),
+        withSession: async (ctx) => {
+          ctx.ui.notify("Session archived. Started a new session.", "info");
+        },
+      });
+
+      if (result.cancelled) {
+        ctx.ui.notify("New session was cancelled", "warning");
+      }
     },
   });
 
