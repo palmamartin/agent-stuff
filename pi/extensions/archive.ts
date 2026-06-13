@@ -30,16 +30,7 @@ function archiveCurrentSession(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerCommand("archive-quit", {
-    description: "Archive the current session and quit pi",
-    handler: async (_args, ctx) => {
-      const archived = archiveCurrentSession(pi, ctx);
-      ctx.ui.notify(archived ? "Session archived. Quitting pi." : "Session already archived. Quitting pi.", "info");
-      ctx.shutdown();
-    },
-  });
-
-  pi.registerCommand("archive-new", {
+  pi.registerCommand("archive", {
     description: "Archive the current session and start a new session",
     handler: async (_args, ctx) => {
       archiveCurrentSession(pi, ctx);
@@ -57,16 +48,12 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("unarchive", {
-    description: "Mark the current session as not archived",
+  pi.registerCommand("archive-quit", {
+    description: "Archive the current session and quit pi",
     handler: async (_args, ctx) => {
-      if (!isArchived(ctx.sessionManager.getBranch())) {
-        ctx.ui.notify("Session is not archived", "info");
-        return;
-      }
-
-      pi.appendEntry(CUSTOM_TYPE, { archived: false });
-      ctx.ui.notify("Session unarchived", "info");
+      const archived = archiveCurrentSession(pi, ctx);
+      ctx.ui.notify(archived ? "Session archived. Quitting pi." : "Session already archived. Quitting pi.", "info");
+      ctx.shutdown();
     },
   });
 
@@ -110,6 +97,19 @@ export default function (pi: ExtensionAPI) {
 
       const message = `Archived ${archived}, skipped ${skipped}${failed > 0 ? `, failed ${failed}` : ""}`;
       ctx.ui.notify(message, failed > 0 ? "warning" : "info");
+    },
+  });
+
+  pi.registerCommand("unarchive", {
+    description: "Mark the current session as not archived",
+    handler: async (_args, ctx) => {
+      if (!isArchived(ctx.sessionManager.getBranch())) {
+        ctx.ui.notify("Session is not archived", "info");
+        return;
+      }
+
+      pi.appendEntry(CUSTOM_TYPE, { archived: false });
+      ctx.ui.notify("Session unarchived", "info");
     },
   });
 }
