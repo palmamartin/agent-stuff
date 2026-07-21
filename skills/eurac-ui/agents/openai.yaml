@@ -1,0 +1,5 @@
+interface:
+  display_name: "Eurac UI"
+  short_description: "Apply Eurac colors to UI implementation"
+  brand_color: "#DF1B12"
+  default_prompt: "Use $eurac-ui to build this interface with Eurac color tokens."

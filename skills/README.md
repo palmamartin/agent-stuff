@@ -20,6 +20,7 @@ make all
 | Skill | Description |
 |-------|-------------|
 | [agent-browser](./agent-browser) | Automates browser interactions for web testing, form filling, screenshots, and data extraction |
+| [eurac-ui](./eurac-ui) | Applies Eurac color tokens to UI and frontend implementation |
 | [vscode](./vscode) | VS Code integration for viewing diffs and comparing files |
 
 ## Requirements
