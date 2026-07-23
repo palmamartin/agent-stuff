@@ -1,33 +1,51 @@
 ---
 name: 1password-cli
-description: Use 1Password Environments with the local `op` CLI for project commands, especially when running local servers/dev servers. Reads non-secret `.1p.config` config for environment/account, loads via `op run --environment`, and never reads mounted `.env` files.
+description: Use 1Password Environments with the local `op` CLI for project commands, especially local servers/dev servers. Reads non-secret `.1p.config` only; never reads mounted `.env` files.
 ---
 
-# 1Password Environments + local `op` CLI
+# 1Password CLI / Environments
 
-Use this skill whenever a task involves 1Password Environments, local 1Password-mounted `.env` files, the `op` CLI, or starting/running a local server, dev server, test server, worker, REPL, or app command that may need project secrets.
+Use this skill for tasks involving 1Password Environments, `op`, 1Password-mounted `.env` files, or running project commands that may need secrets (dev servers, test servers, workers, REPLs, app commands).
 
-## Non-negotiable safety rules
+## Hard safety rules
 
-- **Never read a local `.env` file to verify it exists or inspect its contents.** Do not run `cat .env`, `head .env`, `tail .env`, `grep .env`, `rg ... .env`, `sed`, `awk`, `less`, editor opens, dotenv parsers, Node/Python/Ruby file reads, or any equivalent command against `.env` / `.env.*` files.
-- **Do not use `op run --env-file=.env` with a mounted 1Password `.env` file.** That explicitly opens the file; use `op run --environment <environment-id>` instead.
-- **Do not run `op environment read` for verification.** It outputs environment variable key/value pairs. Use it only if the user explicitly asks to read an Environment and understands secrets may be revealed.
-- **Never print secrets or full process environments.** Avoid `printenv`, `env`, framework debug dumps, or `--no-masking` unless the user explicitly requests it and the risk is clear.
-- **Never pass `--no-masking`** for normal server/dev commands. Let 1Password conceal hidden variables in stdout/stderr.
-- Treat local `.env` mounts as sensitive named pipes/FIFOs. Do not probe them. Let 1Password and the user-authorized process handle access.
+- **Never read `.env` / `.env.*` file contents.** Do not use `cat`, `head`, `tail`, `grep`, `rg`, `sed`, `awk`, `less`, editors, dotenv parsers, scripts, or any equivalent file read against them. Do not inspect values, keys, comments, or structure.
+- **Never use `op run --env-file=.env`** for mounted 1Password dotenv files. Use `op run --environment <id>`.
+- **Never run `op environment read` for verification.** It prints key/value pairs. Only use it when the user explicitly requests reading an Environment and accepts secret exposure risk.
+- **Never dump environments or secrets.** Avoid `env`, `printenv`, framework debug env dumps, and `--no-masking` unless explicitly requested with risk acknowledged.
+- Keep 1Password masking enabled for normal commands.
 
-## Preferred way to run project commands
+## Preferred command pattern
 
-Run commands through the local 1Password CLI with the corresponding Environment ID:
+Run secret-dependent commands through 1Password Environments:
 
 ```sh
 op run --environment <environment-id> -- <command>
 ```
 
-If a project has a `.1p.config` configuration file and it contains `account=...`, include the account selection flag too. Use the correct flag spelling: `--account`.
+If an account is configured/known, select it explicitly:
 
 ```sh
 op run --account=<account> --environment <environment-id> -- <command>
+```
+
+Multiple Environments are allowed; later entries override earlier ones:
+
+```sh
+op run --environment <shared-env-id> --environment <local-env-id> -- <command>
+```
+
+Explicit non-secret dotenv overlays are also allowed when the user or a safe config explicitly requests a specific path, such as `.env.local`. Do not read the file contents. 1Password CLI precedence is:
+
+1. 1Password Environments (`--environment`) override everything else.
+2. Environment files (`--env-file`) override shell environment variables.
+3. Shell environment variables are lowest precedence.
+
+If multiple `--env-file` flags are used, the last file wins among environment files. If multiple `--environment` flags are used, the last Environment wins among Environments.
+
+```sh
+op run --environment <environment-id> --env-file .env.local -- <command>
+op run --environment <shared-env-id> --environment <local-env-id> --env-file .env.local -- <command>
 ```
 
 Examples:
@@ -40,35 +58,25 @@ op run --environment "$OP_ENVIRONMENT_ID" -- bun dev
 op run --environment "$OP_ENVIRONMENT_ID" -- make dev
 ```
 
-If multiple 1Password Environments are needed, pass them in order from lowest to highest priority. When the same variable exists in more than one Environment, the last Environment specified wins:
+## `.1p.config` project config
 
-```sh
-op run --environment <shared-env-id> --environment <local-env-id> -- npm run dev
-```
+Agents may read `.1p.config`; it is non-secret and should contain only selectors:
 
-If multiple 1Password accounts are configured and the account is known, always select it with `--account` or `OP_ACCOUNT`.
-
-## Project configuration file: `.1p.config`
-
-Agents may read `.1p.config`. It is a non-secret project configuration file used only to choose the correct 1Password Environment and account. It must not contain secret values.
-
-Expected format:
-
-```
+```ini
 environment=<environment-id>
 account=<account-shorthand-or-signin-address-or-account-id>
 ```
 
 Rules:
 
-- Look for `.1p.config` in the project root before asking the user for an Environment ID.
-- Read only the exact `.1p.config` file. Do not read `.env`, `.env.local`, `.env.*`, or any mounted dotenv file.
-- Parse simple `key=value` lines. Ignore blank lines and `#` comments.
-- `environment` is the 1Password Environment ID to pass to `--environment`.
-- `account` is optional. If present, include `--account=<account>` in the `op run` command.
-- If `account` is absent, omit `--account` and let the local CLI/account selection handle it.
+- Look for `.1p.config` in the project root before asking for an Environment ID.
+- Read only `.1p.config`; never read `.env`, `.env.local`, or `.env.*`.
+- Optional `env_file=<path>` entries may name explicit non-secret dotenv overlays to pass to `op run --env-file`. Treat these paths as selectors only; do not read their contents.
+- Parse simple `key=value` lines; ignore blanks and `#` comments.
+- `environment` is required to build `--environment <id>`.
+- `account` is optional; when present, add `--account=<account>`.
 
-Command construction from `.1p.config`:
+Command construction:
 
 ```sh
 # account present
@@ -78,46 +86,58 @@ op run --account=<account> --environment <environment> -- <command>
 op run --environment <environment> -- <command>
 ```
 
-## Finding the corresponding Environment safely
+## Safe Environment ID discovery order
 
-1. Use `.1p.config` if present.
-2. Use an Environment ID supplied by the user or by other non-secret project documentation/configuration.
-3. Safe places to inspect include `README*`, `AGENTS.md`, package/task scripts, Makefiles, Justfiles, and explicit non-secret 1Password config files.
-4. If an ID is already exported, use it without printing secrets, for example `OP_ENVIRONMENT_ID`.
-5. If no Environment ID is discoverable, ask the user for it. They can copy it in the 1Password desktop app: **Developer** → **View Environments** → select the Environment → **Manage environment** → **Copy environment ID**.
-6. Do not try to discover the ID by reading `.env` files or by dumping Environment contents.
+1. Read project-root `.1p.config`, if present.
+2. Use an Environment ID supplied by the user or explicit non-secret docs/config.
+3. Inspect only safe non-secret sources: `README*`, `AGENTS.md`, package/task scripts, Makefiles, Justfiles, and explicit 1Password config files.
+4. If `OP_ENVIRONMENT_ID` is already exported/known, use it without printing environment contents.
+5. If no ID is discoverable, ask the user for it. They can copy it in 1Password: **Developer → View Environments → select Environment → Manage environment → Copy environment ID**.
+6. Do not discover IDs by reading `.env` files or dumping Environment contents.
 
-## Before running a server
+## Before running a server/command
 
-- Check that `op` is available with safe commands only, such as `command -v op` and `op --version`.
-- For Environment support, local `op` must support `op run --environment` / 1Password Environments. If the flag is unavailable, tell the user to install/update to a 1Password CLI beta/release that includes Environments support; do **not** fall back to reading `.env`.
-- If authentication is needed, let `op` trigger the 1Password desktop app/system auth prompt. Ask the user to unlock/approve it if the command waits or fails for auth.
+- Check CLI availability with safe commands only: `command -v op`, `op --version`.
+- Ensure `op run --environment` is supported. If not, ask the user to update/install a 1Password CLI release with Environments support; do not fall back to `.env`.
+- Let `op` trigger 1Password auth. If it waits/fails, ask the user to unlock/approve/select the right account/grant Environment access.
 
-## Mounted local `.env` files
+## Local `.env` files
 
-1Password-mounted `.env` files expose Environment variables on demand without storing plaintext on disk. They are useful for dotenv-compatible tools, but the agent must not read or validate them directly.
+### Explicit non-secret dotenv overlays
 
-If a project is already configured to use a mounted `.env` file and the user explicitly wants that path used, start the normal project command and let the application/dotenv library read it. Do not preflight with `cat`, dotenv parsing, or `op run --env-file`.
+When the user explicitly states that a dotenv file contains non-secrets, or a safe config such as `.1p.config` lists it as `env_file=<path>`, it may be merged into `op run` with `--env-file`:
 
-Be aware of limitations:
+```sh
+op run --environment <environment-id> --env-file .env.local -- <command>
+```
 
-- Local `.env` mounts are supported on Mac and Linux.
-- Concurrent reads can conflict. If a dev server cannot read the mounted file, ask the user to close IDE/editor sessions or other processes that may be holding it open.
-- Watch-heavy tools such as Vite may restart repeatedly when mounted `.env` FIFOs emit filesystem events. If this happens, suggest ignoring the mounted env path in the dev server watcher, e.g. Vite `server.watch.ignored: ['**/.env']`.
+Rules:
+
+- Do not read or parse the file yourself.
+- Do not dump the resulting environment.
+- Use `--env-file` only for explicit paths supplied by the user or safe config.
+- Prefer 1Password Environments for secrets; dotenv overlays should be for non-secret local defaults.
+- Remember precedence: `--environment` values override `--env-file` values.
+
+### Mounted local `.env` files
+
+Treat 1Password-mounted `.env` files as sensitive FIFOs. Do not open, parse, preflight, or validate them.
+
+If the project already uses a mounted dotenv path and the user explicitly wants that path used, run the normal project command and let the application/dotenv library read it. Do not use `op run --env-file` for the mount.
+
+Known limitations:
+
+- Mounted dotenv files are supported on macOS and Linux.
+- Concurrent reads can conflict; ask the user to close IDE/editor/processes holding the file open.
+- Watch-heavy tools (for example Vite) may restart on FIFO events. Suggest ignoring the mounted path, e.g. `server.watch.ignored: ['**/.env']`.
 
 ## Failure handling
 
-- `unknown flag: --environment`: the local CLI is too old or lacks Environments support. Ask the user to update `op`; do not read `.env` as a workaround.
-- Auth/permission errors: ask the user to unlock 1Password, approve the desktop prompt, select the right account, or grant access to the Environment.
-- Missing Environment ID: ask the user for the Environment ID; do not inspect `.env`.
-- Server logs appear to contain secrets: stop or redact output. Keep 1Password masking enabled.
+- `unknown flag: --environment`: CLI is too old/lacks Environments support. Ask the user to update `op`; do not read `.env`.
+- Auth/permission errors: ask the user to unlock 1Password, approve prompts, choose the right account, or grant Environment access.
+- Missing Environment ID: ask the user for the ID; do not inspect `.env`.
+- Logs contain secrets: stop or redact output; keep 1Password masking enabled.
 
-## Documentation sources
+## Source basis
 
-Based on the 1Password developer documentation index (`https://www.1password.dev/llms.txt`) and these pages:
-
-- 1Password Environments overview
-- Access secrets through local `.env` files
-- Programmatically read 1Password Environments
-- 1Password CLI get started/reference
-- `op run` and `op environment` command references
+Based on 1Password developer docs for Environments, mounted local `.env` files, programmatic Environment reads, CLI setup/reference, `op run`, and `op environment`.
