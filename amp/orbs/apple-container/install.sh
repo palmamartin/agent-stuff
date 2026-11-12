@@ -22,10 +22,24 @@ if $firewall; then
 	label=computer.der.amp-orbs-pf
 	anchor=/etc/pf.anchors/computer.der.amp-orbs
 	plist=/Library/LaunchDaemons/$label.plist
+	# Login Items shows the name of the program launchd runs. Root runs it, so
+	# it lives in a root-owned folder.
+	bin="/Library/Application Support/computer.der.amp-orbs/amp-orbs-firewall"
 	sudo install -m 644 -o root -g wheel "$dir/pf.conf" "$anchor"
 	# pfctl -E holds a pf enable reference for good, so pf stays on when other
 	# users of pf release theirs. The anchor is reloaded every minute in case
 	# pf is reloaded and to pick up new addresses of this Mac.
+	sudo mkdir -p "$(dirname "$bin")"
+	sudo tee "$bin" >/dev/null <<EOF
+#!/bin/sh
+/sbin/pfctl -E 2>&1 | grep -i token
+while :; do
+	out=\$(/sbin/pfctl -a com.apple/100.amp-orbs -f $anchor 2>&1) || echo "\$(date): \$out"
+	sleep 60
+done
+EOF
+	sudo chown root:wheel "$bin"
+	sudo chmod 755 "$bin"
 	sudo tee "$plist" >/dev/null <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -34,9 +48,7 @@ if $firewall; then
 	<key>Label</key><string>$label</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/bin/sh</string>
-		<string>-c</string>
-		<string>/sbin/pfctl -E 2>&amp;1 | grep -i token; while :; do out=\$(/sbin/pfctl -a com.apple/100.amp-orbs -f $anchor 2>&amp;1) || echo "\$(date): \$out"; sleep 60; done</string>
+		<string>$bin</string>
 	</array>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
@@ -48,6 +60,7 @@ EOF
 	sudo chown root:wheel "$plist"
 	sudo chmod 644 "$plist"
 	sudo launchctl bootout "system/$label" 2>/dev/null || true
+	while sudo launchctl print "system/$label" >/dev/null 2>&1; do sleep 1; done
 	sudo launchctl bootstrap system "$plist"
 	echo "$label: started, log /var/log/$label.log"
 fi

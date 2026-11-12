@@ -69,7 +69,7 @@ To run one account in the foreground without a login item:
 
 ### Firewall details
 
-`install.sh --firewall` copies `pf.conf` to `/etc/pf.anchors/computer.der.amp-orbs` and installs the LaunchDaemon `computer.der.amp-orbs-pf`. At boot it enables pf and keeps an enable reference, so pf stays on when other users of pf (such as Internet Sharing) turn it off. Every minute it reloads the rules into the `com.apple/100.amp-orbs` anchor, so they come back if pf is reloaded.
+`install.sh --firewall` copies `pf.conf` to `/etc/pf.anchors/computer.der.amp-orbs` and installs the LaunchDaemon `computer.der.amp-orbs-pf`, which runs `/Library/Application Support/computer.der.amp-orbs/amp-orbs-firewall` and shows up in Login Items as `amp-orbs-firewall`. Keep it switched on there, or orbs lose the firewall. At boot it enables pf and keeps an enable reference, so pf stays on when other users of pf (such as Internet Sharing) turn it off. Every minute it reloads the rules into the `com.apple/100.amp-orbs` anchor, so they come back if pf is reloaded.
 
 - Check the loaded rules: `sudo pfctl -a com.apple/100.amp-orbs -s rules`
 - Log (pf enable token and reload errors): `/var/log/computer.der.amp-orbs-pf.log`
@@ -79,6 +79,7 @@ To run one account in the foreground without a login item:
   ```bash
   sudo launchctl bootout system/computer.der.amp-orbs-pf
   sudo rm /Library/LaunchDaemons/computer.der.amp-orbs-pf.plist /etc/pf.anchors/computer.der.amp-orbs
+  sudo rm -r /Library/Application\ Support/computer.der.amp-orbs
   sudo pfctl -a com.apple/100.amp-orbs -F rules
   ```
 
