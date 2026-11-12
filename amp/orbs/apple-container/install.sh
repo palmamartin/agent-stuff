@@ -56,6 +56,12 @@ for account in "$@"; do
 	label="computer.der.amp-orb-provider.$account"
 	plist="$HOME/Library/LaunchAgents/$label.plist"
 	log="$HOME/Library/Logs/amp-orb-provider-$account.log"
+	# Login Items shows the name of the program launchd runs, so give each
+	# account its own launcher instead of running bash directly.
+	bin="$HOME/Library/Application Support/computer.der.amp-orb-provider/amp-orb-provider-$account"
+	mkdir -p "$(dirname "$bin")"
+	printf '#!/bin/bash\nexec /bin/bash %q %q\n' "$dir/start.sh" "$account" >"$bin"
+	chmod 755 "$bin"
 	cat >"$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -64,9 +70,7 @@ for account in "$@"; do
 	<key>Label</key><string>$label</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/bin/bash</string>
-		<string>$dir/start.sh</string>
-		<string>$account</string>
+		<string>$bin</string>
 	</array>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
@@ -77,6 +81,8 @@ for account in "$@"; do
 </plist>
 EOF
 	launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+	# The provider finishes running jobs before it exits; wait for that.
+	while launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; do sleep 1; done
 	launchctl bootstrap "gui/$(id -u)" "$plist"
 	echo "$label: started, log $log"
 done

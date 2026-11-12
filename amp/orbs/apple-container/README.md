@@ -6,7 +6,7 @@ Runs Amp orbs on this Mac as [Apple container](https://github.com/apple/containe
 | --- | --- |
 | `dispatch.sh` | Handles Amp's orb lifecycle jobs (`spawn`, `pause`, `delete`) with the `container` CLI. |
 | `start.sh <account>` | Runs `amp orb provider` for one account, using that account's provider token from the Keychain. |
-| `install.sh [--firewall] <account>...` | Installs a login item (LaunchAgent) per account that runs `start.sh` and restarts it if it exits. `--firewall` also installs `pf.conf`. |
+| `install.sh [--firewall] <account>...` | Installs a login item (LaunchAgent) per account that runs `start.sh` and restarts it if it exits. Login Items in System Settings lists it as `amp-orb-provider-<account>`. `--firewall` also installs `pf.conf`. |
 | `pf.conf` | Firewall rules that keep orbs off this Mac, its LAN, and its Tailscale network. |
 
 ## Requirements
@@ -54,6 +54,7 @@ To run one account in the foreground without a login item:
   ```bash
   launchctl bootout gui/$(id -u)/computer.der.amp-orb-provider.<account>
   rm ~/Library/LaunchAgents/computer.der.amp-orb-provider.<account>.plist
+  rm ~/Library/Application\ Support/computer.der.amp-orb-provider/amp-orb-provider-<account>
   ```
 
 - Change a token: run the `security add-generic-password -U …` command again, then restart that account.
