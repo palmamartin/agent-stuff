@@ -32,10 +32,12 @@ case "$ORB_OPERATION" in
 			container start "$ORB_ID"
 		else
 			create_network
+			# Snapshots from `container commit` keep `sleep` as their entrypoint,
+			# so set it explicitly instead of passing `sleep infinity` as the command.
 			container run --detach --init \
 				--platform linux/arm64 --cpus 4 --memory 8G \
-				--network "$ORB_ID" \
-				--name "$ORB_ID" "$image" sleep infinity
+				--network "$ORB_ID" --entrypoint sleep \
+				--name "$ORB_ID" "$image" infinity
 		fi
 		# A bare --env NAME copies the value from the host.
 		container exec --detach --env ORB_TOKEN --env AMP_URL \
