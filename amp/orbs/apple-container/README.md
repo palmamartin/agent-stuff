@@ -16,13 +16,17 @@ Runs Amp orbs on this Mac as [Apple container](https://github.com/apple/containe
 
 ## Setup
 
-1. In each Amp account, get the orb provider token (`aop_live_…`) from Settings → Orbs. Rotating a provider's token shows a new one.
-2. Store each token in the login keychain. The command prompts for the token, so it stays out of your shell history:
+1. In each Amp account, get the orb provider token (`aop_live_…`) from Settings → Orbs, and create an Amp API key. Rotating a provider's token shows a new one.
+2. Store both in the login keychain for each account. Each command prompts for the value, so it stays out of your shell history:
 
    ```bash
    security add-generic-password -U -s amp-orb-provider -a work -w
    security add-generic-password -U -s amp-orb-provider -a private -w
+   security add-generic-password -U -s amp-api-key -a work -w
+   security add-generic-password -U -s amp-api-key -a private -w
    ```
+
+   The provider token runs the account's orbs. The API key lets `dispatch.sh` see which of the account's threads are archived, so it can delete their orbs (see [Cleanup](#cleanup)). Without an account's API key, `dispatch.sh` falls back to the `amp` CLI's login, which sees only the threads of the account it's logged in to; `install.sh` warns about missing keys.
 
 3. Install the firewall and the login items:
 
@@ -85,9 +89,18 @@ To run one account in the foreground without a login item:
 
 If your own networks use `10.213.0.0/16`, change the range in both `dispatch.sh` and `pf.conf`.
 
+## Cleanup
+
+Amp sends `delete` only when a thread is deleted, and never asks to delete snapshots, so every `pause` and `delete` job also cleans up:
+
+- Orbs of archived threads: stopped orb containers and leftover orb networks whose thread is archived are deleted. `dispatch.sh` asks Amp with `amp threads search`, using the account's `amp-api-key` from the Keychain or else the `amp` CLI's login. Orbs of threads that login can't see are kept. If you unarchive such a thread and continue it, it gets a fresh orb that runs setup again, so push work before archiving.
+- Snapshot images older than 72 hours that no orb container uses. Amp reuses a snapshot for at most 72 hours after its chain was built from the base image, so it never boots one of those again.
+
+Check disk usage with `container system df`.
+
 ## Limitations
 
 - Providers start at login, not at boot. Apple container only runs in a logged-in user session. To start at boot, enable automatic login, which FileVault doesn't allow.
 - While the Mac sleeps, providers can't take jobs and orbs are frozen, so threads wait or their orbs fail to start. `start.sh` keeps the Mac awake while a provider runs, but only on AC power. On battery, or with the lid closed and no external display, the Mac still sleeps.
-- Pausing an orb into a snapshot runs `container commit`, which writes the orb's whole filesystem (several GB) as a new image and takes a minute or more. Amp never asks to delete snapshots, so `dispatch.sh` deletes snapshot images older than 72 hours that no orb container uses, on every `pause` and `delete` job. Amp reuses a snapshot for at most 72 hours after its chain was built from the base image, so it never boots one of those again. Check disk usage with `container system df`.
+- Pausing an orb into a snapshot runs `container commit`, which writes the orb's whole filesystem (several GB) as a new image and takes a minute or more.
 - A paused orb keeps its stopped container and its network, and each network keeps a small helper process running until the orb is deleted.

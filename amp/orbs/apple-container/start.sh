@@ -10,6 +10,10 @@ export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 account="${1:?usage: start.sh <account>}"
 dir="$(cd "$(dirname "$0")" && pwd)"
 token="$(security find-generic-password -s amp-orb-provider -a "$account" -w)"
+# Optional Amp API key of the account, so dispatch.sh can see which of its
+# threads are archived. Without it, dispatch.sh uses the amp CLI's login.
+AMP_THREADS_API_KEY="$(security find-generic-password -s amp-api-key -a "$account" -w 2>/dev/null || true)"
+export AMP_THREADS_API_KEY
 
 # At login the container services may not be running yet.
 container system status >/dev/null 2>&1 || container system start --enable-kernel-install

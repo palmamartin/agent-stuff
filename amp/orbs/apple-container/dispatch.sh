@@ -6,7 +6,16 @@ export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 # "$ORB_IMAGE" is the Amp orb image.
 
 ids=$(container list --all --quiet)
-exists() { grep -Fxq "$ORB_ID" <<<"$ids"; }
+exists() { grep -Fxq "${1-$ORB_ID}" <<<"$ids"; }
+
+delete_orb() {
+	if exists "$1"; then
+		container delete --force "$1"
+	fi
+	if container network inspect "$1" >/dev/null 2>&1; then
+		container network delete "$1" >/dev/null
+	fi
+}
 
 # Each orb gets its own vmnet network: containers on different networks cannot
 # reach each other. Orb networks use 10.213.<n>.0/24, which pf.conf firewalls.
@@ -42,6 +51,24 @@ prune_snapshots() {
 	done
 }
 
+# Amp sends delete only when a thread is deleted, not archived. Delete stopped
+# orbs and leftover orb networks whose thread is archived. Threads the Amp login
+# can't see (another account's, without its API key) are never matched.
+delete_archived() {
+	local running id archived
+	running=$(container list --quiet)
+	for id in $({ echo "$ids"; container network list | awk 'NR > 1 { print $1 }'; } |
+		grep '^amp-' | sort -u); do
+		grep -Fxq "$id" <<<"$running" && continue
+		archived=$(AMP_API_KEY="${AMP_THREADS_API_KEY:-${AMP_API_KEY-}}" \
+			amp threads search "id:T-${id#amp-} archived:true" --json 2>/dev/null) || continue
+		grep -q '"id"' <<<"$archived" || continue
+		echo "deleting $id: its thread is archived"
+		# Another provider may delete the same orb at the same time.
+		delete_orb "$id" || true
+	done
+}
+
 case "$ORB_OPERATION" in
 	spawn)
 		image="$ORB_IMAGE"
@@ -67,15 +94,12 @@ case "$ORB_OPERATION" in
 			[ -z "${ORB_SNAPSHOT_ID-}" ] || container commit "$ORB_ID" "$ORB_SNAPSHOT_ID"
 		fi
 		prune_snapshots
+		delete_archived
 		;;
 	delete)
-		if exists; then
-			container delete --force "$ORB_ID"
-		fi
-		if container network inspect "$ORB_ID" >/dev/null 2>&1; then
-			container network delete "$ORB_ID" >/dev/null
-		fi
+		delete_orb "$ORB_ID"
 		prune_snapshots
+		delete_archived
 		;;
 	*)
 		exit 1

@@ -66,6 +66,8 @@ EOF
 fi
 
 for account in "$@"; do
+	security find-generic-password -s amp-api-key -a "$account" >/dev/null 2>&1 ||
+		echo "warning: no amp-api-key for $account in the keychain; orbs of its archived threads are deleted only if the amp CLI is logged in to $account (see README)" >&2
 	label="computer.der.amp-orb-provider.$account"
 	plist="$HOME/Library/LaunchAgents/$label.plist"
 	log="$HOME/Library/Logs/amp-orb-provider-$account.log"
