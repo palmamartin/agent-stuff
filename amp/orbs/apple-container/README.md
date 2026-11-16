@@ -89,4 +89,5 @@ If your own networks use `10.213.0.0/16`, change the range in both `dispatch.sh`
 
 - Providers start at login, not at boot. Apple container only runs in a logged-in user session. To start at boot, enable automatic login, which FileVault doesn't allow.
 - While the Mac sleeps, providers can't take jobs and orbs are frozen, so threads wait or their orbs fail to start. `start.sh` keeps the Mac awake while a provider runs, but only on AC power. On battery, or with the lid closed and no external display, the Mac still sleeps.
+- Pausing an orb into a snapshot runs `container commit`, which writes the orb's whole filesystem (several GB) as a new image and takes a minute or more. Amp never asks to delete snapshots, so `dispatch.sh` deletes snapshot images older than 72 hours that no orb container uses, on every `pause` and `delete` job. Amp reuses a snapshot for at most 72 hours after its chain was built from the base image, so it never boots one of those again. Check disk usage with `container system df`.
 - A paused orb keeps its stopped container and its network, and each network keeps a small helper process running until the orb is deleted.

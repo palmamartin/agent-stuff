@@ -24,6 +24,24 @@ create_network() {
 	return 1
 }
 
+# Amp never asks to delete project snapshots, and each `container commit` keeps
+# a multi-GB image. Amp reuses a snapshot for at most 72 hours after its chain
+# was built from the base image, so delete older snapshot images no orb uses.
+prune_snapshots() {
+	local cutoff used image created
+	cutoff=$(date -u -v-72H +%Y-%m-%dT%H:%M:%SZ)
+	used=$(container list --all | awk 'NR > 1 { sub("^docker.io/library/", "", $2); print $2 }')
+	for image in $(container image list --quiet | grep '^snap-'); do
+		grep -Fxq "$image" <<<"$used" && continue
+		created=$(container image inspect "$image" |
+			plutil -extract 0.configuration.creationDate raw -o - -) || continue
+		# Another provider may delete the same image at the same time.
+		if [[ "$created" < "$cutoff" ]]; then
+			container image delete "$image" >/dev/null 2>&1 || true
+		fi
+	done
+}
+
 case "$ORB_OPERATION" in
 	spawn)
 		image="$ORB_IMAGE"
@@ -48,6 +66,7 @@ case "$ORB_OPERATION" in
 			container stop "$ORB_ID"
 			[ -z "${ORB_SNAPSHOT_ID-}" ] || container commit "$ORB_ID" "$ORB_SNAPSHOT_ID"
 		fi
+		prune_snapshots
 		;;
 	delete)
 		if exists; then
@@ -56,6 +75,7 @@ case "$ORB_OPERATION" in
 		if container network inspect "$ORB_ID" >/dev/null 2>&1; then
 			container network delete "$ORB_ID" >/dev/null
 		fi
+		prune_snapshots
 		;;
 	*)
 		exit 1
