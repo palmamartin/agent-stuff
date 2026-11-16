@@ -9,18 +9,36 @@ ids=$(container list --all --quiet)
 exists() { grep -Fxq "${1-$ORB_ID}" <<<"$ids"; }
 
 delete_orb() {
-	if exists "$1"; then
-		container delete --force "$1"
-	fi
+	# Delete the hold after the orb, so the network's bridge goes away with its
+	# last container while that bridge still belongs to it (see hold below).
+	local c
+	for c in "$1" "$1-hold"; do
+		if exists "$c"; then
+			container delete --force "$c"
+		fi
+	done
 	if container network inspect "$1" >/dev/null 2>&1; then
 		container network delete "$1" >/dev/null
 	fi
 }
 
+# macOS adds a network's bridge (bridge100, ...) when its first container starts
+# and removes it when its last one stops, but the network keeps the bridge's
+# name. Once a stopped network's name goes to another network, starting it
+# again deletes that network's bridge, and stopping it again can too, cutting
+# the other orb off. So an orb's network never stops while the orb exists: a
+# small hold container stays on it while the orb is stopped.
+hold() {
+	exists "$ORB_ID-hold" && return
+	container run --detach --cpus 1 --memory 200M \
+		--network "$ORB_ID" --entrypoint sleep \
+		--name "$ORB_ID-hold" "$ORB_IMAGE" infinity >/dev/null
+	ids+=$'\n'"$ORB_ID-hold"
+}
+
 # Each orb gets its own vmnet network: containers on different networks cannot
 # reach each other. Orb networks use 10.213.<n>.0/24, which pf.conf firewalls.
 create_network() {
-	container network inspect "$ORB_ID" >/dev/null 2>&1 && return
 	local used n
 	used=$(container network list | awk '{ print $2 }')
 	for n in {1..254}; do
@@ -58,7 +76,7 @@ delete_archived() {
 	local running id archived
 	running=$(container list --quiet)
 	for id in $({ echo "$ids"; container network list | awk 'NR > 1 { print $1 }'; } |
-		grep '^amp-' | sort -u); do
+		grep '^amp-' | grep -v -- '-hold$' | sort -u); do
 		grep -Fxq "$id" <<<"$running" && continue
 		archived=$(AMP_API_KEY="${AMP_THREADS_API_KEY:-${AMP_API_KEY-}}" \
 			amp threads search "id:T-${id#amp-} archived:true" --json 2>/dev/null) || continue
@@ -75,7 +93,12 @@ case "$ORB_OPERATION" in
 		container image inspect "${ORB_SNAPSHOT_ID-}" >/dev/null 2>&1 && image="$ORB_SNAPSHOT_ID"
 		if exists; then
 			container start "$ORB_ID"
+			if exists "$ORB_ID-hold"; then
+				container delete --force "$ORB_ID-hold" >/dev/null
+			fi
 		else
+			# Leftovers of an orb whose container is gone, such as its network.
+			delete_orb "$ORB_ID"
 			create_network
 			# Snapshots from `container commit` keep `sleep` as their entrypoint,
 			# so set it explicitly instead of passing `sleep infinity` as the command.
@@ -90,8 +113,14 @@ case "$ORB_OPERATION" in
 		;;
 	pause)
 		if exists; then
+			hold
 			container stop "$ORB_ID"
-			[ -z "${ORB_SNAPSHOT_ID-}" ] || container commit "$ORB_ID" "$ORB_SNAPSHOT_ID"
+			# With a snapshot, the next spawn boots from it on a new network,
+			# so keep nothing else. Without one, the stopped orb and its hold stay.
+			if [ -n "${ORB_SNAPSHOT_ID-}" ]; then
+				container commit "$ORB_ID" "$ORB_SNAPSHOT_ID"
+				delete_orb "$ORB_ID"
+			fi
 		fi
 		prune_snapshots
 		delete_archived
