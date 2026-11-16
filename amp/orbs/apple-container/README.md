@@ -88,4 +88,5 @@ If your own networks use `10.213.0.0/16`, change the range in both `dispatch.sh`
 ## Limitations
 
 - Providers start at login, not at boot. Apple container only runs in a logged-in user session. To start at boot, enable automatic login, which FileVault doesn't allow.
+- While the Mac sleeps, providers can't take jobs and orbs are frozen, so threads wait or their orbs fail to start. `start.sh` keeps the Mac awake while a provider runs, but only on AC power. On battery, or with the lid closed and no external display, the Mac still sleeps.
 - A paused orb keeps its stopped container and its network, and each network keeps a small helper process running until the orb is deleted.

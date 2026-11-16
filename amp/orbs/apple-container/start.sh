@@ -15,4 +15,7 @@ token="$(security find-generic-password -s amp-orb-provider -a "$account" -w)"
 container system status >/dev/null 2>&1 || container system start --enable-kernel-install
 
 export ORB_IMAGE=us-central1-docker.pkg.dev/amp-prod-0/amp-orb/amp-orb-arm64:latest
+# While the Mac sleeps, the provider can't claim jobs and orbs are frozen.
+# Keep it awake on AC power for as long as the provider (this PID) runs.
+caffeinate -s -w $$ &
 AMP_ORB_PROVIDER_TOKEN="$token" exec amp orb provider "$dir/dispatch.sh"
