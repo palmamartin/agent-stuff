@@ -36,6 +36,22 @@ hold() {
 	ids+=$'\n'"$ORB_ID-hold"
 }
 
+# Holds only cover orb networks. Another network, such as `default` when
+# `container build` starts buildkit on it, can still take an orb network's
+# bridge, which leaves the orb without its gateway, DNS, or a way to reach Amp.
+# Succeeds if this Mac has the orb network's gateway, or the orb has no network
+# of its own.
+has_bridge() {
+	local gateway i
+	gateway=$(container network inspect "$ORB_ID" 2>/dev/null |
+		plutil -extract 0.status.ipv4Gateway raw -o - - 2>/dev/null) || return 0
+	for i in {1..5}; do
+		ifconfig | grep -Fq "inet $gateway " && return
+		sleep 1
+	done
+	return 1
+}
+
 # Each orb gets its own vmnet network: containers on different networks cannot
 # reach each other. Orb networks use 10.213.<n>.0/24, which pf.conf firewalls.
 create_network() {
@@ -106,6 +122,14 @@ case "$ORB_OPERATION" in
 				--platform linux/arm64 --cpus 4 --memory 8G \
 				--network "$ORB_ID" --entrypoint sleep \
 				--name "$ORB_ID" "$image" infinity
+		fi
+		# With its hold gone, stopping the orb stops its network, and starting
+		# it again gives the network a new bridge.
+		if ! has_bridge; then
+			echo "$ORB_ID: its network lost its bridge; restarting the orb"
+			container stop "$ORB_ID"
+			container start "$ORB_ID"
+			has_bridge
 		fi
 		# A bare --env NAME copies the value from the host.
 		container exec --detach --env ORB_TOKEN --env AMP_URL \
