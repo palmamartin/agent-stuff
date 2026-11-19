@@ -66,11 +66,11 @@ To run one account in the foreground without a login item:
 ## Isolation
 
 - Each orb is its own VM with 4 CPUs and 8 GB of memory. No host folders are mounted, no ports are published, and no SSH agent is forwarded.
-- Each orb gets its own container network, named after the orb ID, with the subnet `10.213.<n>.0/24` (IPv6 `fd00:213:0:<n>::/64`). Orbs can't reach each other or containers on other networks. The network is deleted along with the orb.
-- A network must not stop while its orb exists. macOS adds a network's bridge (`bridge100`, …) when its first container starts and removes it when its last one stops, but the network keeps the bridge's name. If another network gets that name, starting or stopping the first network again deletes the other network's bridge, and that orb loses all network access. So `pause` starts a small hold container (`<orb>-hold`, 1 CPU, 200 MB) on the network before it stops the orb, and `spawn` deletes the hold once the orb runs again. When Amp pauses with a snapshot, the orb, its hold, and its network are deleted after the commit, and the next `spawn` boots the snapshot on a new network. Holds don't cover other networks: `default` still starts and stops, for example when `container build` starts buildkit on it, and can take an orb network's bridge. So `spawn` checks that the Mac has the orb network's gateway and, if not, stops and starts the orb to give its network a new bridge.
+- All orbs share one container network, `orbnet`, with the subnet `10.213.0.0/24` (IPv6 `fd00:213::/64`), so orbs can reach each other but not containers on other networks.
+- `orbnet` must never stop. macOS adds a network's bridge (`bridge100`, …) when its first container starts and removes it when its last one stops, but the network keeps the bridge's name. If another network, such as `default` when `container build` starts buildkit on it, gets that name, starting or stopping the first network again deletes the other network's bridge, and its containers lose all network access. So `spawn` creates `orbnet` and a small hold container, `orbnet-hold` (1 CPU, 200 MB), that keeps running while every orb is paused. If the hold stopped anyway, for example after a reboot, and `orbnet` lost its bridge, `spawn` stops every container on `orbnet` and starts the hold again, which gives the network a new bridge.
 - Without the firewall, orbs can reach the Mac itself (through their gateway or the Mac's LAN address), the local network, and every device on the Mac's Tailscale network, which sees them as this Mac. Any service on the Mac that listens on all interfaces is open to them.
 - The firewall (`install.sh --firewall`) blocks that. It allows orb networks only DNS on their gateway and the public internet, and drops their traffic to this Mac, private ranges (`10/8`, `172.16/12`, `192.168/16`), Tailscale (`100.64/10`), link-local, multicast, and the IPv6 equivalents. It only matches orb subnets, so other containers keep their access.
-- Orb containers created before per-orb networks stay on the shared `default` network, unfirewalled, until they're deleted.
+- Orb containers created before `orbnet` stay on their own network or on `default` until they're deleted.
 
 ### Firewall details
 
@@ -94,7 +94,7 @@ If your own networks use `10.213.0.0/16`, change the range in both `dispatch.sh`
 
 Amp sends `delete` only when a thread is deleted, and never asks to delete snapshots, so every `pause` and `delete` job also cleans up:
 
-- Orbs of archived threads: stopped orb containers and leftover orb networks whose thread is archived are deleted. `dispatch.sh` asks Amp with `amp threads search`, using the account's `amp-api-key` from the Keychain or else the `amp` CLI's login. Orbs of threads that login can't see are kept. If you unarchive such a thread and continue it, it gets a fresh orb that runs setup again, so push work before archiving.
+- Orbs of archived threads: stopped orb containers whose thread is archived are deleted. `dispatch.sh` asks Amp with `amp threads search`, using the account's `amp-api-key` from the Keychain or else the `amp` CLI's login. Orbs of threads that login can't see are kept. If you unarchive such a thread and continue it, it gets a fresh orb that runs setup again, so push work before archiving.
 - Snapshot images older than 72 hours that no orb container uses. Amp reuses a snapshot for at most 72 hours after its chain was built from the base image, so it never boots one of those again.
 
 Check disk usage with `container system df`.
@@ -104,4 +104,4 @@ Check disk usage with `container system df`.
 - Providers start at login, not at boot. Apple container only runs in a logged-in user session. To start at boot, enable automatic login, which FileVault doesn't allow.
 - While the Mac sleeps, providers can't take jobs and orbs are frozen, so threads wait or their orbs fail to start. `start.sh` keeps the Mac awake while a provider runs, but only on AC power. On battery, or with the lid closed and no external display, the Mac still sleeps.
 - Pausing an orb into a snapshot runs `container commit`, which writes the orb's whole filesystem (several GB) as a new image and takes a minute or more.
-- An orb paused without a snapshot keeps its stopped container, its network with a small helper process, and its hold container until it resumes or is deleted. An orb paused with a snapshot keeps only the snapshot image.
+- An orb paused without a snapshot keeps its stopped container until it resumes or is deleted. An orb paused with a snapshot keeps only the snapshot image. `orbnet-hold` keeps running once the first orb has started.
