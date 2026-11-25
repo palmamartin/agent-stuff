@@ -95,11 +95,22 @@ case "$ORB_OPERATION" in
 		else
 			# Snapshots from `container commit` keep `sleep` as their entrypoint,
 			# so set it explicitly instead of passing `sleep infinity` as the command.
+			# Docker in the orb needs every capability, and a writable /proc/sys
+			# for IP forwarding. The orb's VM is the isolation boundary.
 			container run --detach --init \
 				--platform linux/arm64 --cpus 4 --memory 8G \
+				--cap-add ALL --read-only-path NONE \
 				--network orbnet --entrypoint sleep \
 				--name "$ORB_ID" "$image" infinity
 		fi
+		# cgroup v2 gives Docker's containers domain cgroups only when the orb's
+		# own cgroup holds no processes; otherwise runc makes them threaded and
+		# `container stop` fails writing their cgroup.kill. So move the orb's
+		# processes into a child cgroup, where later execs land too, and enable
+		# every controller for children.
+		container exec --user root "$ORB_ID" sh -c 'cd /sys/fs/cgroup && mkdir -p init &&
+			for pid in $(cat cgroup.procs); do echo "$pid" >init/cgroup.procs 2>/dev/null || true; done &&
+			sed "s/[^ ]*/+&/g" cgroup.controllers >cgroup.subtree_control'
 		# A bare --env NAME copies the value from the host.
 		container exec --detach --env ORB_TOKEN --env AMP_URL \
 			"$ORB_ID" amp orb bootstrap
