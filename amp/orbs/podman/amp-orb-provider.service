@@ -1,0 +1,16 @@
+[Unit]
+Description=Amp orb provider (%u)
+# Runs only for users with a token file, which only root can create.
+ConditionPathExists=/etc/amp-orbs/%u.env
+
+[Service]
+EnvironmentFile=/etc/amp-orbs/%u.env
+Environment=ORB_IMAGE=us-central1-docker.pkg.dev/amp-prod-0/amp-orb/amp-orb:latest
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h
+ExecStart=%h/.local/bin/amp orb provider /opt/amp-orbs/dispatch.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

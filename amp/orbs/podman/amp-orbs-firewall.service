@@ -1,0 +1,22 @@
+[Unit]
+Description=Firewall for self-hosted Amp orbs
+DefaultDependencies=no
+Wants=network-pre.target
+# logind starts the lingering orb users' managers, so the rules are in place first.
+Before=network-pre.target systemd-logind.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/amp-orbs/firewall.nft
+# dispatch.sh refuses to spawn orbs without this marker (orb users can't read nftables).
+ExecStartPost=/usr/bin/install -d -m 0755 /run/amp-orbs
+ExecStartPost=/usr/bin/touch /run/amp-orbs/firewall-loaded
+# The file replaces the table in one transaction, so a reload leaves no gap.
+ExecReload=/usr/sbin/nft -f /etc/amp-orbs/firewall.nft
+ExecStop=/usr/bin/rm -f /run/amp-orbs/firewall-loaded
+ExecStop=/usr/sbin/nft delete table inet amp_orbs
+
+[Install]
+WantedBy=sysinit.target

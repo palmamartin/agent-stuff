@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# amp-orbs [podman args]: run podman as every orb-* user, for example
+#   amp-orbs                 list all orbs (podman ps -a)
+#   amp-orbs stats --no-stream
+#   amp-orbs images
+# Needs sudo. Installed as /usr/local/bin/amp-orbs by install.sh.
+set -euo pipefail
+[ $# -gt 0 ] || set -- ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+cd /
+for u in $(getent passwd | awk -F: '$1 ~ /^orb-/ { print $1 }'); do
+	echo "== $u"
+	sudo -u "$u" env XDG_RUNTIME_DIR="/run/user/$(id -u "$u")" podman "$@"
+done

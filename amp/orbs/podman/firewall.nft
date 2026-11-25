@@ -1,0 +1,24 @@
+#!/usr/sbin/nft -f
+# Orb firewall, installed as /etc/amp-orbs/firewall.nft by install.sh, which
+# fills in the skuid set below with every orb-* user. Loaded by amp-orbs-firewall.service.
+#
+# Rootless Podman (pasta) opens every orb connection as the orb user, so one
+# output rule per user covers the orbs, Docker containers inside them, and the
+# provider. They may reach the public internet and the resolved stub, nothing
+# else: not this host, the LAN, Tailscale, link-local or multicast.
+# Only this table is touched, so Tailscale's rules stay as they are.
+table inet amp_orbs
+delete table inet amp_orbs
+table inet amp_orbs {
+	chain output {
+		type filter hook output priority 0; policy accept;
+		meta skuid { @ORB_USERS@ } jump orb
+	}
+	chain orb {
+		# resolved stub, for the orb users' host processes (provider, podman pull)
+		ip daddr 127.0.0.53 meta l4proto { udp, tcp } th dport 53 accept
+		ip daddr { 0.0.0.0/8, 127.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16,
+		           172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 255.255.255.255 } counter drop
+		ip6 daddr { ::1, fc00::/7, fe80::/10, ff00::/8 } counter drop
+	}
+}
